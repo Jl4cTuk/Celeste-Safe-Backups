@@ -16,7 +16,7 @@ namespace Celeste.Mod.InfiniteBackups {
         public bool LogToIngameConsole { get; set; } = true;
 #endif
 
-        public bool BackupAsZipFile { get; set; } = true;
+        public bool BackupAsZipFile { get; set; } = false;
 
         public bool AutoDeleteOldBackups { get; set; } = false;
 

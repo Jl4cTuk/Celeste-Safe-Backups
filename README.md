@@ -1,4 +1,4 @@
-# Celeste Infinite Backups Mod
+# Celeste Safe Backups Mod
 
 ![Screenshot preview](sreenshots/options.png)
 
@@ -6,7 +6,8 @@
 
 ## Features
 
-- Backs up the entire savefile folder (including saves from mods) every time the game saves and put them into time-based folder
+- Backs up the entire savefile folder (including saves from mods) at safe game transitions instead of every save
+- Avoids hooking the core save thread, reducing the chance of in-level hitching during normal saves
 - Auto delete old backups if you don't want the backup folder becomes too large
 
 ## Download

@@ -22,7 +22,7 @@ namespace Celeste.Mod.InfiniteBackups.Utils {
                 }
                 try {
                     Engine.Commands?.Log($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] [{InfiniteBackupsModule.LoggerTagName}] {logLevel}: {text}", color);
-                } catch (Exception err) {
+                } catch (Exception) {
                     // ignored
                 }
             }

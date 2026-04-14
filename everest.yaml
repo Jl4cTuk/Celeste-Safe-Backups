@@ -1,6 +1,7 @@
-- Name: InfiniteBackups
+- Name: SafeBackups
   Version: 1.1.3
   DLL: bin/InfiniteBackups.dll
+  Description: Creates save backups at safe game transitions instead of every save.
   Dependencies:
     - Name: Celeste
       Version: 1.4.0.0

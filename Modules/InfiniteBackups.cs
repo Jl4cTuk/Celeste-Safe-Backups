@@ -1,13 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Collections;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using Celeste.Mod.InfiniteBackups.Utils;
 using Ionic.Zip;
-using MonoMod.Cil;
-using MonoMod.RuntimeDetour;
 using MonoMod.Utils;
 
 namespace Celeste.Mod.InfiniteBackups.Modules {
@@ -18,68 +16,81 @@ namespace Celeste.Mod.InfiniteBackups.Modules {
 
         public static readonly string SavePath = dd_UserIO.Get<string>("SavePath");
 
-        private static ILHook ilHook_UserIO_SaveThread;
-
         public static void Load() {
-            ilHook_UserIO_SaveThread = new ILHook(typeof(UserIO).GetMethod("orig_SaveThread", ~BindingFlags.Default),
-                patch_UserIO_orig_SaveThread);
+            On.Celeste.LevelExit.Routine += onLevelExitRoutine;
         }
 
         public static void Unload() {
-            ilHook_UserIO_SaveThread?.Dispose();
+            On.Celeste.LevelExit.Routine -= onLevelExitRoutine;
         }
 
-        private static void patch_UserIO_orig_SaveThread(ILContext il) {
-            ILCursor cursor = new ILCursor(il);
+        private static IEnumerator onLevelExitRoutine(On.Celeste.LevelExit.orig_Routine orig, LevelExit self) {
+            IEnumerator routine = orig(self);
+            while (routine.MoveNext()) {
+                yield return routine.Current;
+            }
 
-            if (!cursor.TryGotoNext(MoveType.AfterLabel,
-                instr => instr.MatchCall(typeof(UserIO), nameof(UserIO.Close)))
-            ) {
-                LogUtil.Log($"Failed patching {cursor.Method.Name}!", LogLevel.Warn);
+            if (ShouldBackupLevelExit(self)) {
+                PerformBackup(GetLevelExitReason(self));
+            }
+        }
+
+        private static bool ShouldBackupLevelExit(LevelExit self) {
+            object modeObject = new DynamicData(self).Get("mode");
+            if (!(modeObject is LevelExit.Mode mode)) {
+                LogUtil.Log("Failed to read LevelExit mode. Skipping backup.", LogLevel.Warn);
+                return false;
+            }
+
+            return mode == LevelExit.Mode.Completed ||
+                mode == LevelExit.Mode.CompletedInterlude ||
+                mode == LevelExit.Mode.SaveAndQuit ||
+                mode == LevelExit.Mode.GiveUp;
+        }
+
+        private static string GetLevelExitReason(LevelExit self) {
+            object modeObject = new DynamicData(self).Get("mode");
+            if (!(modeObject is LevelExit.Mode mode)) {
+                return "level exit";
+            }
+
+            switch (mode) {
+                case LevelExit.Mode.Completed:
+                    return "chapter complete";
+                case LevelExit.Mode.CompletedInterlude:
+                    return "interlude complete";
+                case LevelExit.Mode.SaveAndQuit:
+                    return "save and quit";
+                case LevelExit.Mode.GiveUp:
+                    return "give up";
+                default:
+                    return "level exit";
+            }
+        }
+
+        private static void PerformBackup(string reason) {
+            LogUtil.Log($"Backing up saves after {reason}...", LogLevel.Info);
+            try {
+                if (InfiniteBackupsModule.Settings.BackupAsZipFile) {
+                    BackupSavesAsZipFile();
+                } else {
+                    BackupSaves();
+                }
+            } catch (Exception err) {
+                LogUtil.Log("Backup saves failed!", LogLevel.Warn);
+                err.LogDetailed(InfiniteBackupsModule.LoggerTagName);
                 return;
             }
 
-            /*
-                ...
-                if (UserIO.Open(UserIO.Mode.Write)) {
-                    ...
-                    if (UserIO.savingSettings) {
-                        UserIO.SavingResult &= UserIO.Save<Settings>("settings", UserIO.savingSettingsData);
-                    }
-                    [patch here] <=====
-                    UserIO.Close();
-                }
-                ...
-            */
-
-            cursor.EmitDelegate<Action>(() => {
-                LogUtil.Log("Backing up saves...", LogLevel.Info);
-                bool result;
+            if (InfiniteBackupsModule.Settings.AutoDeleteOldBackups) {
+                LogUtil.Log("Deleting outdated backups...", LogLevel.Info);
                 try {
-                    if (InfiniteBackupsModule.Settings.BackupAsZipFile) {
-                        BackupSavesAsZipFile();
-                    } else {
-                        BackupSaves();
-                    }
-                    result = true;
+                    DeleteOutdatedSaves();
                 } catch (Exception err) {
-                    LogUtil.Log("Backup saves failed!", LogLevel.Warn);
+                    LogUtil.Log("Delete outdated backups failed!", LogLevel.Warn);
                     err.LogDetailed(InfiniteBackupsModule.LoggerTagName);
-                    result = false;
                 }
-
-                dd_UserIO.Set(nameof(UserIO.SavingResult), UserIO.SavingResult & result);
-
-                if (InfiniteBackupsModule.Settings.AutoDeleteOldBackups) {
-                    LogUtil.Log("Deleting outdated backups...", LogLevel.Info);
-                    try {
-                        DeleteOutdatedSaves();
-                    } catch (Exception err) {
-                        LogUtil.Log("Delete outdated backups failed!", LogLevel.Warn);
-                        err.LogDetailed(InfiniteBackupsModule.LoggerTagName);
-                    }
-                }
-            });
+            }
         }
 
         private static DateTime? ParseBackupTime(string name) {
